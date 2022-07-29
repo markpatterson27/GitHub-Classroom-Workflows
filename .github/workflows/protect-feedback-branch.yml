@@ -1,0 +1,36 @@
+# Workflow to set feedback branch to protected
+name: Protect Feedback Branch
+
+on:
+  # Will run every time branch or tag created
+  create:
+  workflow_dispatch:
+
+jobs:
+  protect-branch:
+    name: Protect branch
+    # only run if feedback branch created
+    if: ${{ (github.ref_type == 'branch' && github.ref_name == 'feedback') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.ORGWRITE}}
+          script: |
+            await github.rest.repos.updateBranchProtection({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: 'feedback',
+              required_status_checks: {
+                strict: true,
+                contexts: [
+                  'GitHub Classroom Workflow/Autograding'
+                ]
+              },
+              enforce_admins: false,
+              required_pull_request_reviews: {
+                required_approving_review_count: 1,
+              },
+              restrictions: null
+            })
