@@ -13,6 +13,7 @@ jobs:
   # job to run autograding
   grade:
     name: Autograding
+    if: ${{ !github.event.repository.is_template }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
