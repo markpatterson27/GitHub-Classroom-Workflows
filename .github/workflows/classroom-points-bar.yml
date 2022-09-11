@@ -1,0 +1,69 @@
+# Workflow that runs autograding and builds a points bar for score feedback
+# Add
+#   <img alt="points bar" align="right" height="36" src="../../blob/status/.github/activity-icons/points-bar.svg" />
+# to README.md
+name: GitHub Classroom Workflow
+
+on: 
+  push:
+    branches:
+    - '*'
+    - '!status'
+    - '!feedback'
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  # job to run autograding
+  grade:
+    name: Autograding
+    if: ${{ !github.event.repository.is_template }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v3
+      
+      # run grading
+      # add id to step so outputs can be referenced
+      - uses: education/autograding@v1
+        name: "** Grading and Feedback **"
+        id: autograde
+
+    outputs:
+      grading-score: ${{ steps.autograde.outputs.Points }}
+
+  # job to build activity status icons
+  build-activity-icons:
+    name: Build Activity Icons
+    runs-on: ubuntu-latest
+    if: always()
+    needs: build
+    steps:
+      # need to checkout whole repo
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # switch to status branch
+      - run: git checkout status || git checkout -b status
+
+      # make dir for activity status icons
+      - name: make icons dir
+        run: mkdir -p .github/activity-icons
+
+      # create points bar
+      - name: points bar
+        uses: markpatterson27/points-bar@v1
+        with:
+          points: ${{ needs.build.outputs.grading-score }}
+          path: '.github/activity-icons/points-bar.svg'
+
+      # commit and push activity icons if statuses have changed
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add '.github/activity-icons'
+          git commit -m "Add/Update activity icons" || exit 0
+          git push origin status
