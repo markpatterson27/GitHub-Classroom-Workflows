@@ -1,0 +1,16 @@
+name: GitHub Classroom Workflow
+
+on:
+  issue_comment:                                     
+    types: [created, edited, deleted]
+
+jobs:
+  # job to run autograding
+  grade:
+    name: Autograding
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, 'run grading') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v3
+      - uses: education/autograding@v1
