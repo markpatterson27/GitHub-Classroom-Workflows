@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/github-script@v6
         with:
-          github-token: ${{secrets.ORGWRITE}}
+          github-token: ${{secrets.REPO_SCOPE}}
           script: |
             await github.rest.repos.updateBranchProtection({
               owner: context.repo.owner,
@@ -25,7 +25,7 @@ jobs:
               required_status_checks: {
                 strict: true,
                 contexts: [
-                  'GitHub Classroom Workflow/Autograding'
+                  'Autograding'
                 ]
               },
               enforce_admins: false,
