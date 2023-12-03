@@ -124,7 +124,7 @@ jobs:
       - if: ${{ steps.find-pr.outputs.number != 0 }}
         name: Render Template
         id: render
-        uses: ntsd/liquidjs-action@main # TODO: fork and update
+        uses: markpatterson27/liquidjs-action@dev-update-node-20
         with:
           variables: ${{ needs.parse-feedback.outputs.feedback-json }}
           template-file: ${{ inputs.pr-template }}
@@ -169,7 +169,7 @@ jobs:
       # render template
       - name: Render Template
         id: render
-        uses: ntsd/liquidjs-action@main # TODO: fork and update
+        uses: markpatterson27/liquidjs-action@dev-update-node-20
         with:
           variables: ${{ needs.parse-feedback.outputs.feedback-json }}
           template-file: ${{ inputs.step-summary-template }}
