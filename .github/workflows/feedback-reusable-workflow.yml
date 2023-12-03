@@ -95,7 +95,7 @@ jobs:
           github-token: ${{secrets.GITHUB_TOKEN}}
           title: ${{ inputs.pr-title }}
           base: ${{ inputs.pr-base }}
-          branch: ${{ inputs.pr-branch }} # TODO: get default branch name from env content
+          branch: ${{ inputs.pr-branch }}
           state: all
 
       # if PR not found, exit
@@ -106,7 +106,7 @@ jobs:
       - if: ${{ steps.find-pr.outputs.number != 0 }}
         name: Render Template
         id: render
-        uses: ntsd/liquidjs-action@main
+        uses: ntsd/liquidjs-action@main # TODO: fork and update
         with:
           variables: ${{ needs.parse-feedback.outputs.feedback-json }}
           template-file: ${{ inputs.pr-template }}
