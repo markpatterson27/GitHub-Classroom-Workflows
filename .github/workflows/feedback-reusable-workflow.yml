@@ -64,14 +64,32 @@ jobs:
       # TODO: replace with action that parses more file types
       - name: parse feedback
         uses: yzalvin/action-yaml-front-matter@v1
-        id: parse
+        id: parse-files
         with:
           input-directory: ${{ env.FEEDBACK_DIR }}
 
-      - run: echo "${{ steps.parse.outputs.output }}"
+      - name: Check jq installation
+        run: |
+          jq --version
+          which jq
+      
+      - name: Add JSON to a key in a new JSON array
+        id: add-key
+        run: |
+          json_output='${{ steps.parse-files.outputs.output }}'
+          new_json=$(echo "$json_output" | jq -c '. | {"feedback-files": .}')
+          echo "New JSON: $new_json"
+          {
+            echo 'output<<EOF'
+            echo "$new_json"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - run: echo "${{ steps.add-key.outputs.output }}"
 
     outputs:
-      feedback-json: ${{ steps.parse.outputs.output }}
+      feedback-json: ${{ steps.add-key.outputs.output }}
 
   post-pr:
     name: Post PR comment
