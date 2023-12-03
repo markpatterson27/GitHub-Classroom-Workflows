@@ -24,6 +24,10 @@ on:
         default: ${{ github.event.repository.default_branch }}
         required: false
         type: string
+      summary-template:
+        description: 'Template to use for step summary'
+        required: false
+        type: string
     secrets:
       token:
         description: 'Token to use for PR comments'
