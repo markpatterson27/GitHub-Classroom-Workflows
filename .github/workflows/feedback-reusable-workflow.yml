@@ -98,6 +98,46 @@ jobs:
           branch: ${{ inputs.pr-branch }} # TODO: get default branch name from env content
           state: all
 
+      # if PR not found, exit
+      - if: ${{ !steps.find-pr.outputs.number }}
+        run: echo "no PR found, skipping PR feedback"
+
+      # if PR exists, render template
+      - if: ${{ !steps.find-pr.outputs.number }}
+        name: Render Template
+        id: render
+        uses: ntsd/liquidjs-action@main
+        with:
+          variables: $${{ needs.parse-feedback.outputs.feedback-json }}}
+          template-file: ${{ inputs.pr-template }}
+
+      # if PR exists, hide previous comment
+      - if: ${{ !steps.find-pr.outputs.number }}
+        name: hide old feedback comments
+        uses: kanga333/comment-hider@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          issue_number: ${{ steps.find-pr.outputs.number }}
+
+      # if PR exists, post new comment
+      # post comment on feedback PR. issues and PRs have same numbers
+      - if: ${{ !steps.find-pr.outputs.number }}
+        name: post comment
+        uses: actions/github-script@v7
+        env:
+          MESSAGE: ${{ steps.render.outputs.result }}
+          ISSUE: ${{ steps.find-pr.outputs.number }}
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const { MESSAGE, ISSUE } = process.env
+            await github.rest.issues.createComment({
+              issue_number: process.env.ISSUE,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `${MESSAGE}`
+            })
+
   post-stepsummary:
     name: Post step-summary
     runs-on: ubuntu-latest
