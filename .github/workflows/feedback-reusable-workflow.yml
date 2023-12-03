@@ -5,6 +5,11 @@ name: Feedback Reusable Workflow
 on:
   workflow_call:
     inputs:
+      artifact-name:
+        description: 'Artifact to parse'
+        default: 'feedback'
+        required: true
+        type: string
       pr-template:
         description: 'Template to use for PR comments'
         required: false
@@ -37,21 +42,39 @@ permissions:
   contents: read
   pull-requests: write
 
+env:
+  FEEDBACK_DIR: feedback
+
 jobs:
-  feedback:
-    name: Feedback
+  parse-feedback:
+    name: Parse Feedback
     runs-on: ubuntu-latest
+    steps:
+      # download artifact
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ env.FEEDBACK_DIR }}
+
+      - run: ls -la ${{ env.FEEDBACK_DIR }}
+
+  post-pr:
+    name: Post PR comment
+    runs-on: ubuntu-latest
+    needs: parse-feedback
+    if: ${{ inputs.pr-template }}
     steps:
       # checkout repo to access template files
       - name: Checkout
         uses: actions/checkout@v4
 
-      - if: ${{ !inputs.pr-template }}
-        run: echo "no PR template proved, skipping PR feedback"
+      # - if: ${{ !inputs.pr-template }}
+      #   run: echo "no PR template proved, skipping PR feedback"
 
       # find PR if it exists
       - name: Find PR number
-        if: ${{ inputs.pr-template }}
+        # if: ${{ inputs.pr-template }}
         uses: markpatterson27/find-pull-request-action@pre-pr-release-v1.8.0  # TODO: update to latest version
         id: find-pr
         with:
@@ -60,3 +83,13 @@ jobs:
           base: ${{ inputs.pr-base }}
           branch: ${{ inputs.pr-branch }} # TODO: get default branch name from env content
           state: all
+
+  post-stepsummary:
+    name: Post step-summary
+    runs-on: ubuntu-latest
+    needs: parse-feedback
+    if: ${{ inputs.summary-template }}
+    steps:
+      # checkout repo to access template files
+      - name: Checkout
+        uses: actions/checkout@v4
