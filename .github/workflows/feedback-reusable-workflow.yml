@@ -59,6 +59,20 @@ jobs:
 
       - run: ls -la ${{ env.FEEDBACK_DIR }}
 
+      # parse feedback
+      # output name - output
+      # TODO: replace with action that parses more file types
+      - name: parse feedback
+        uses: yzalvin/action-yaml-front-matter@v1
+        id: parse
+        with:
+          input-directory: ${{ env.FEEDBACK_DIR }}
+
+      - run: echo "${{ steps.parse.outputs.output }}"
+
+    outputs:
+      feedback-json: ${{ steps.parse.outputs.output }}
+
   post-pr:
     name: Post PR comment
     runs-on: ubuntu-latest
