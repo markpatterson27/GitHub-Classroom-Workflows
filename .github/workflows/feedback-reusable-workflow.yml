@@ -29,7 +29,7 @@ on:
         default: ${{ github.event.repository.default_branch }}
         required: false
         type: string
-      summary-template:
+      step-summary-template:
         description: 'Template to use for step summary'
         required: false
         type: string
@@ -160,8 +160,22 @@ jobs:
     name: Post step-summary
     runs-on: ubuntu-latest
     needs: parse-feedback
-    if: ${{ inputs.summary-template }}
+    if: ${{ inputs.step-summary-template }}
     steps:
       # checkout repo to access template files
       - name: Checkout
         uses: actions/checkout@v4
+
+      # render template
+      - name: Render Template
+        id: render
+        uses: ntsd/liquidjs-action@main # TODO: fork and update
+        with:
+          variables: ${{ needs.parse-feedback.outputs.feedback-json }}
+          template-file: ${{ inputs.step-summary-template }}
+
+      # create step summary
+      - name: Grading Summary
+        run: |
+          echo "${{ steps.render.outputs.result }}" >> $GITHUB_STEP_SUMMARY
+        
