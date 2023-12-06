@@ -75,21 +75,37 @@ jobs:
       
       - name: Add JSON to a key in a new JSON array
         id: add-key
-        run: |
-          json_output='${{ steps.parse-files.outputs.output }}'
-          new_json=$(echo "$json_output" | jq -c '. | {"feedback-files": .}')
-          echo "New JSON: $new_json"
-          {
-            echo 'output<<EOF'
-            echo "$new_json"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-        shell: bash
+        env:
+          JSON_OUTPUT: ${{ steps.parse-files.outputs.output }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { JSON_OUTPUT } = process.env
+            const json = JSON.parse(JSON_OUTPUT)
+            const new_json = {
+              "feedback-files": json
+            }
+            console.log(new_json)
 
-      - run: echo "${{ steps.add-key.outputs.output }}"
+            // add env to JSON
+            // remove JSON_OUTPUT from env
+            process.env.JSON_OUTPUT = undefined
+            const json_env = JSON.stringify(process.env)
+            const json_env_obj = JSON.parse(json_env)
+
+            // merge into new_json
+            const merged_json = {
+              ...new_json,
+              env: json_env_obj
+            }    
+            console.log(merged_json)
+            return new_json
+          # result-encoding: string
+
+      # - run: echo ${ ${{ steps.add-key.outputs.result }} //\'/\\\'}
 
     outputs:
-      feedback-json: ${{ steps.add-key.outputs.output }}
+      feedback-json: ${{ steps.add-key.outputs.result }}
 
   post-pr:
     name: Post PR comment
