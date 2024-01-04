@@ -25,7 +25,6 @@ on:
       assignment_id:
         description: 'Assignment ID'
         required: true
-        default: ''
       grading_tests_directory:
         description: 'Comma seperated list of directories containing grading tests'
         required: false
