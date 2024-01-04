@@ -1,6 +1,6 @@
 # Workflow that pulls all student assignments and grades them in this repo's runners.
 #
-# Workflow is triggered by a workflow_dispatch event
+# Workflow is triggered by a workflow_dispatch event or by a workflow_call event.
 #
 # Inputs:
 #   assignment_id (required): ID of the assignment to grade. This can be found using
@@ -28,6 +28,17 @@ on:
       grading_tests_directory:
         description: 'Comma seperated list of directories containing grading tests'
         required: false
+
+  workflow_call:
+    inputs:
+      assignment_id:
+        description: 'Assignment ID'
+        required: true
+        type: number
+      grading_tests_directory:
+        description: 'Comma seperated list of directories containing grading tests'
+        required: false
+        type: string
 
 env:
   GRADING_RESULTS_ARTIFACT: results
