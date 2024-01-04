@@ -1,0 +1,201 @@
+# Workflow that pulls all student assignments and grades them in this repo's runners.
+#
+# Workflow is triggered by a workflow_dispatch event
+#
+# Inputs:
+#   assignment_id (required): ID of the assignment to grade. This can be found using
+#     the gh-classroom CLI.
+#   grading_tests_directory (optional): Comma seperated list of directories containing
+#     grading tests. These directories should be in the root of the repository
+#     containing this workflow. The directories in the student's assignment repository
+#     will be replaced with the directories in this list.
+#     If no directories are provided, the workflow will use the grading tests in
+#     the student's assignment repository.
+#
+# Outputs:
+#   Results will be uploaded as workflow artifacts
+#
+# Required secrets:
+#   REPO_SCOPE: Personal Access Token with repo scope
+#
+name: Grading Tests
+on:
+  workflow_dispatch:
+    inputs:
+      assignment_id:
+        description: 'Assignment ID'
+        required: true
+        default: ''
+      grading_tests_directory:
+        description: 'Comma seperated list of directories containing grading tests'
+        required: false
+
+env:
+  GRADING_RESULTS_ARTIFACT: results
+  COMPILED_RESULTS_ARTIFACT: compiled-results
+
+jobs:
+  # get all assignment IDs and further details
+  assignments:
+    name: Get Assignment Details
+    runs-on: ubuntu-latest
+    steps:
+      # install gh-classroom CLI extension
+      - name: Install gh-classroom extension
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh extension install github/gh-classroom
+
+      #
+      - name: Get student assignments
+        id: assignments
+        env:
+          ASSIGNMENT_ID: ${{ github.event.inputs.assignment_id }}
+          GH_TOKEN: ${{ secrets.REPO_SCOPE }}
+        run: |
+          response=$(gh api -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /assignments/$ASSIGNMENT_ID/grades)
+
+          assignments=$(echo "$response" \
+            | jq -r '{assignments: [.[] | (.github_username + " " + (. | del(.assignment_name, .assignment_url, .starter_code_url, .points_awarded, .points_available) | @base64))]}')
+          echo "assignments=$(echo $assignments | jq -r @json)" >> $GITHUB_OUTPUT
+
+          assignment_name=$(echo "$response" | jq -r '.[0].assignment_name')
+          echo "assignment_name=$assignment_name" >> $GITHUB_OUTPUT
+
+    outputs:
+      assignments: ${{ steps.assignments.outputs.assignments }}
+      assignment_name: ${{ steps.assignments.outputs.assignment_name }}
+
+  # run grading tests on each assignment
+  grading_matrix:
+    name: Grading Matrix
+    needs: assignments
+    continue-on-error: true
+    strategy:
+      matrix:
+        assignment: ${{ fromJson(needs.assignments.outputs.assignments).assignments }}
+    runs-on: ubuntu-latest
+    steps:
+      # Set env
+      - name: Set env
+        run: |
+          echo "GITHUB_USERNAME=$(echo ${{ matrix.assignment }} | cut -d' ' -f1)" >> $GITHUB_ENV
+          assignment_details=$(echo ${{ matrix.assignment }} | cut -d' ' -f2- | base64 -d)
+          echo "ROSTER_ID=$(echo $assignment_details | jq -r '.roster_id')" >> $GITHUB_ENV
+          echo "ASSIGNMENT_REPO_NAME=$(echo $assignment_details | jq -r '.student_repository_name')" >> $GITHUB_ENV
+          assignment_repo_url=$(echo $assignment_details | jq -r '.student_repository_url')
+          echo "ASSIGNMENT_REPO_URL=$assignment_repo_url" >> $GITHUB_ENV
+          assignment_repo=${assignment_repo_url#*github.com/}
+          echo "ASSIGNMENT_REPO=$assignment_repo" >> $GITHUB_ENV
+          echo "SUBMISSION_TIMESTAMP=$(echo $assignment_details | jq -r '.submission_timestamp')" >> $GITHUB_ENV
+
+      # Checkout the grading repo
+      - name: Checkout grading repo
+        if: ${{ github.event.inputs.grading_tests_directory }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: grading
+
+      # Move grading to tmp
+      - name: Move grading to tmp
+        if: ${{ github.event.inputs.grading_tests_directory }}
+        run: |
+          mv grading /tmp/grading
+
+      # Checkout the assignment repo
+      - name: Checkout assignment repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ASSIGNMENT_REPO }}
+          token: ${{ secrets.REPO_SCOPE }}
+
+      # Copy grading tests into assignment repo
+      - name: Copy grading tests into assignment repo
+        if: ${{ github.event.inputs.grading_tests_directory }}
+        run: |
+          grading_tests_directories=( $(echo '${{ github.event.inputs.grading_tests_directory }}' | tr ',' '\n') )
+          for directory in "${grading_tests_directories[@]}"; do
+            rm -rf $directory
+            cp -r /tmp/grading/$directory ./$directory
+          done
+
+      # Run grading tests
+      - name: Autograding
+        id: autograding
+        uses: education/autograding@v1
+        continue-on-error: true
+
+      # Convert grading results to file
+      - name: Convert grading results to file
+        id: convert-results
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/$GRADING_RESULTS_ARTIFACT
+          # format: identifier, github username, points, asssignment repo, submission timestamp
+          echo "$ROSTER_ID, $GITHUB_USERNAME, ${{ steps.autograding.outputs.Points }}, $ASSIGNMENT_REPO_URL, $SUBMISSION_TIMESTAMP" \
+            > $GITHUB_WORKSPACE/$GRADING_RESULTS_ARTIFACT/results-$ASSIGNMENT_REPO_NAME.txt
+
+      # Upload grading results as artifact
+      - name: Upload grading results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.GRADING_RESULTS_ARTIFACT }}-${{ env.GITHUB_USERNAME }}
+          path: ${{ github.workspace }}/${{ env.GRADING_RESULTS_ARTIFACT }}
+
+  # compile all grading results
+  compile-results:
+    name: Compile Results
+    needs: [grading_matrix, assignments]
+    runs-on: ubuntu-latest
+    env:
+      DOWNLOAD_DIR: artifact-downloads
+    steps:
+      # Create directories
+      - name: Create directories
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/${{ env.DOWNLOAD_DIR }}
+          mkdir -p $GITHUB_WORKSPACE/${{ env.GRADING_RESULTS_ARTIFACT }}
+        
+      # Download grading results using API
+      - name: Download grading results
+        env:
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+        run: |
+          urls=$(curl -s -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ env.WORKFLOW_RUN_ID }}/artifacts \
+            | jq -r '.artifacts[] | select(.name | contains("results")) | .archive_download_url')
+
+          for url in $urls; do
+            filename=$(basename $(dirname $url)).zip
+            echo "\n"
+            echo "Downloading url: $url"
+            echo "Downloading to: $GITHUB_WORKSPACE/${{ env.DOWNLOAD_DIR }}/$filename"
+            curl -s -L -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -o $GITHUB_WORKSPACE/${{ env.DOWNLOAD_DIR }}/$filename \
+              "$url"
+          done
+
+      # Unzip grading results
+      - name: Unzip grading results
+        run: |
+          unzip "$GITHUB_WORKSPACE/${{ env.DOWNLOAD_DIR }}/*.zip" -d $GITHUB_WORKSPACE/${{ env.GRADING_RESULTS_ARTIFACT }}
+
+      # Compile grading results to single file
+      - name: Compile grading results
+        id: compile-results
+        run: |
+          echo "Identifier, GitHub Username, Points, Assignment Repo, Submission Timestamp" > $GITHUB_WORKSPACE/${{ env.COMPILED_RESULTS_ARTIFACT }}.csv
+          cat $GITHUB_WORKSPACE/${{ env.GRADING_RESULTS_ARTIFACT }}/*.txt >> $GITHUB_WORKSPACE/${{ env.COMPILED_RESULTS_ARTIFACT }}.csv
+
+      # Upload grading results as artifact
+      - name: Upload compiled grading results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.COMPILED_RESULTS_ARTIFACT }}-${{ needs.assignments.outputs.assignment_name }}
+          path: ${{ github.workspace }}/${{ env.COMPILED_RESULTS_ARTIFACT }}.csv
